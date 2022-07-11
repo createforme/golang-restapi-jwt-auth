@@ -1,57 +1,102 @@
 package http
 
 import (
+	"encoding/json"
 	"net/http"
-	"time"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	user "github.com/createforme/golang-restapi-jwt-auth/internal/user"
 
-	"github.com/go-chi/httprate"
+	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 )
 
+// Handler - store pointer to our comment service
 type Handler struct {
-	Router *chi.Mux
+	Router      *mux.Router
+	ServiceUser *user.Service
 }
 
-// NewHandler -  constructor to create and return a new Handler
-func NewHandler() *Handler {
-	return &Handler{}
+// Response - an object to store responses from our api
+type Response struct {
+	Message string
+	Error   string
 }
 
+// NewHandler - return a pointer to a handler
+func NewHandler(userservice *user.Service) *Handler {
+	return &Handler{
+		ServiceUser: userservice,
+	}
+}
+
+// LoggingMiddleware - a handy middleware function that logs out incoming requests
+func LogginMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.WithFields(
+			log.Fields{
+				"Method": r.Method,
+				"Path":   r.URL.Path,
+				"Host":   r.RemoteAddr,
+			}).
+			Info("handled request")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// SetupRoutes - sets up all the routes for our application
 func (h *Handler) SetupRotues() {
-	h.Router = chi.NewRouter()
+	log.Info("Setting up routes")
 
-	// logs the start and end of each request, along with some useful data about what was requested,
-	// what the response status was, and how long it took to return. When standard output is a TTY,
-	// Logger will print in color, otherwise it will print in black and white. Logger prints a request ID if one is provided.
-	h.Router.Use(middleware.Logger)
+	// initicate new gorilla mox router
+	h.Router = mux.NewRouter()
+	h.Router.Use(LogginMiddleware)
+	h.Router.Use(CORSMiddleware)
 
-	// clean out double slash mistakes from a user's request path.
-	// For example, if a user requests /users//1 or //users////1 will both be treated as: /users/1
-	h.Router.Use(middleware.CleanPath)
+	//  authenticated routes
+	authRoutes := h.Router.Methods(http.MethodPost, http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodOptions).Subrouter()
 
-	// automatically route undefined HEAD requests to GET handlers.
-	h.Router.Use(middleware.GetHead)
+	// Services realted to user
+	//authRoutes.HandleFunc("/api/v1/user/create", h.CreateUser).Methods(http.MethodPost)
+	authRoutes.HandleFunc("/api/v1/user/me", h.CurrentUser).Methods(http.MethodGet, http.MethodOptions)
 
-	// recovers from panics, logs the panic (and a backtrace),
-	// returns a HTTP 500 (Internal Server Error) status if possible. Recoverer prints a request ID if one is provided.
-	h.Router.Use(middleware.Recoverer)
+	authRoutes.Use(AuthMiddleware)
 
-	// Enable httprate request limiter of 100 requests per minute.
-	//
-	// rate-limiting is bound to the request IP address via the LimitByIP middleware handler.
-	//
-	// To have a single rate-limiter for all requests, use httprate.LimitAll(..).
-	h.Router.Use(httprate.LimitByIP(100, 1*time.Minute))
+	// just made this rouer unauth just for local testing.
+	h.Router.HandleFunc("/api/v1/user/create", h.CreateUser).Methods(http.MethodPost)
 
-	h.Router.Route("/api/v1", func(r chi.Router) {
-		r.Get("/", h.TestRoute)
+	// users
+	h.Router.HandleFunc("/api/v1/user/{username}", h.GetUser).Methods("GET")
+	h.Router.HandleFunc("/api/v1/user/auth", h.AuthUser).Methods(http.MethodPost)
+
+	h.Router.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(Response{
+			Message: "Api is Running OK",
+		}); err != nil {
+			log.Fatal(err)
+			panic(err)
+		}
 	})
 
 }
 
-func (h *Handler) TestRoute(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Test Routes"))
-	return
+// handle ok responses
+func sendOkResponse(w http.ResponseWriter, resp interface{}) error {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
+	return json.NewEncoder(w).Encode(resp)
+}
+
+// handle error responses
+func sendErrorResponse(w http.ResponseWriter, message string, err error) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.WriteHeader(http.StatusInternalServerError)
+
+	if err := json.NewEncoder(w).Encode(Response{
+		Message: message,
+		Error:   err.Error(),
+	}); err != nil {
+		panic(err)
+	}
 }

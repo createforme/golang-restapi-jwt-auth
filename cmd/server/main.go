@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/createforme/golang-restapi-jwt-auth/internal/database"
+	transportHttp "github.com/createforme/golang-restapi-jwt-auth/internal/transport/http"
+	"github.com/createforme/golang-restapi-jwt-auth/internal/user"
 	log "github.com/sirupsen/logrus"
 
-	transportHttp "github.com/createforme/simple-api-golang.git/internal/transport/http"
-	"github.com/createforme/simple-api-golang.git/internal/utils"
+	"github.com/createforme/golang-restapi-jwt-auth/internal/utils"
 )
 
 type App struct {
@@ -25,7 +27,14 @@ func (app *App) Run() error {
 			"HostName":   app.Hostname,
 		}).Info("Setting up Application")
 
-	handler := transportHttp.NewHandler()
+	db, err := database.NewDatabase()
+	if err != nil {
+		return err
+	}
+
+	userService := user.NewService(db)
+
+	handler := transportHttp.NewHandler(userService)
 	handler.SetupRotues()
 
 	utils.LogInfo(fmt.Sprintf("server started on port %s, running on http://%s%s", app.Port, app.Hostname, app.Port))
@@ -39,7 +48,7 @@ func (app *App) Run() error {
 
 func main() {
 	app := App{
-		Name:     "sso.client.example.fossnsbm.org",
+		Name:     "app",
 		Version:  "1.0.0",
 		Hostname: "localhost",
 		Port:     ":4000",
