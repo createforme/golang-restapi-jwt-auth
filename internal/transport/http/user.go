@@ -25,6 +25,7 @@ type UserResponse struct {
 }
 
 type UserInputCreds struct {
+	Email    string `json:"email"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -98,7 +99,7 @@ func (h *Handler) AuthUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actualUser, err := h.ServiceUser.GetUser(creds.Username)
+	actualUser, err := h.ServiceUser.GetEmail(creds.Email)
 
 	if err != nil {
 		sendErrorResponse(w, "Error Fetching User", err)
@@ -121,7 +122,15 @@ func (h *Handler) AuthUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Authorization", "bearer "+authtoken)
 
-	if err := sendOkResponse(w, authtoken); err != nil {
+	if err := sendOkResponse(w,
+		struct {
+			AuthToken string
+			User      user.User
+		}{
+			AuthToken: authtoken,
+			User:      actualUser,
+		},
+	); err != nil {
 		log.Error(err)
 	}
 

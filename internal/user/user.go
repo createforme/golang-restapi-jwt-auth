@@ -18,7 +18,7 @@ type User struct {
 	UserName    string `gorm:"column:username;uniqueIndex:idx_username" json:"username"`
 	Description string `gorm:"column:description" json:"description"`
 	Email       string `gorm:"column:email;uniqueIndex:idx_email" json:"email"`
-	Password    string `gorm:"column:password" json:"password"`
+	Password    string `gorm:"column:password" json:"-"`
 	ID          string `gorm:"primary_key;column:id" json:"id"`
 }
 
@@ -41,6 +41,17 @@ func (s *Service) GetUser(username string) (User, error) {
 	var user User
 
 	if result := s.DB.First(&user, "username = ?", username); result.Error != nil {
+		return User{}, result.Error
+	}
+
+	return user, nil
+}
+
+// GetUser - return a user using email
+func (s *Service) GetEmail(email string) (User, error) {
+	var user User
+
+	if result := s.DB.First(&user, "email = ?", email); result.Error != nil {
 		return User{}, result.Error
 	}
 
